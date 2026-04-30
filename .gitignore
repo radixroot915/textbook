@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Harvester runtime
+vault/
+_scratch/
+temp/
+fingerprints.txt
+knowledge_map.json
+model/
+Modelfile
+*.log
+test_*.txt
+logs/
