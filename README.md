@@ -150,6 +150,32 @@ python main.py "<topic>" [min_files] [max_iterations] [max_cycles] [--skip-compi
 Output lands in `vault/<topic>/`, with the compiled textbook under
 `vault/<topic>/curriculum/`.
 
+### `workflow.py` — higher-level CLI
+
+`main.py` only runs the harvest loop. `workflow.py` wraps the whole lifecycle
+(harvest → compile → export → status → probes) behind subcommands:
+
+```bash
+python workflow.py <subcommand> <topic> [flags]
+```
+
+| Subcommand | What it does                                                            |
+|------------|-------------------------------------------------------------------------|
+| `harvest`  | Full harvest + compile + export. Flags: `--min-files`, `--iterations`, `--cycles`, `--skip-compile`. |
+| `expand`   | Additive harvest on an existing vault (does not replace anything).      |
+| `compile`  | Re-compile curriculum from the current vault, no new harvesting.        |
+| `export`   | Export PDF from the existing compiled textbook.                         |
+| `run`      | Compile + export, no harvest.                                           |
+| `smoke`    | Fast single-cycle end-to-end test with benchmark verdict (~20 min).     |
+| `probe`    | Run a small isolated probe (`workflow.py probe list` to see them).      |
+| `status`   | Print vault stats for a topic (file count, classifications, claims).    |
+| `quality`  | Run the quality gate against the existing textbook.                     |
+| `verify`   | Verify a compiled textbook against its source claims.                   |
+| `repair`   | Backfill missing classifications/claims for partially-processed files.  |
+
+`run.ps1` / `run.sh` are thin convenience wrappers around `main.py`. Once
+you outgrow them, switch to `workflow.py`.
+
 ### Tuning `min_files` and `max_iterations`
 
 The core loop is:
@@ -218,4 +244,10 @@ config.py      tunables (concurrency, density thresholds, model names, …)
 
 - Runtime artefacts (`vault/`, `runs/`, `*_run.log`, `fingerprints_*.txt`,
   per-topic JSON state) are gitignored — do not commit them.
-- Tests assume the optional deps in `requirements.txt` are installed.
+- Tests assume the deps in `requirements.txt` are installed
+  (`pip install -r requirements.txt` includes `pytest`). Run with `pytest tests/`.
+
+## License
+
+[AGPL-3.0](LICENSE). If you run a modified version as a service, you must
+make the modified source available to users.
