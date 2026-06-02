@@ -6,15 +6,19 @@ import requests
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from config import RESEARCHER_MODEL, QUERY_MODEL, OLLAMA_BASE, OLLAMA_TAGS
+from config import (
+    RESEARCHER_MODEL, QUERY_MODEL, OLLAMA_BASE, OLLAMA_TAGS,
+    LLM_PROVIDER, LLM_API_KEY, LLM_API_BASE, LLM_MODEL,
+)
 
 log = logging.getLogger(__name__)
 
 
 
-CONNECT_TIMEOUT = 10   # fail fast if Ollama isn't accepting connections
+CONNECT_TIMEOUT = 10   # fail fast if the backend isn't accepting connections
 
-def call(model, prompt, temperature=0.3, timeout=240, retries=1, num_ctx=4096, num_predict=512):
+
+def _call_ollama(model, prompt, temperature, timeout, retries, num_ctx, num_predict):
     options = {"temperature": temperature}
     if num_ctx is not None:
         options["num_ctx"] = num_ctx
@@ -26,10 +30,9 @@ def call(model, prompt, temperature=0.3, timeout=240, retries=1, num_ctx=4096, n
                 OLLAMA_BASE,
                 json={"model": model, "prompt": prompt, "stream": False,
                       "keep_alive": "10m", "options": options},
-                timeout=(CONNECT_TIMEOUT, timeout),   # (connect, read)
+                timeout=(CONNECT_TIMEOUT, timeout),
             )
             if response.status_code in (429, 503):
-                # Ollama overloaded — back off and retry
                 wait = 15 * (attempt + 1)
                 log.warning(f"[LLM] Ollama busy ({response.status_code}), waiting {wait}s...")
                 time.sleep(wait)
@@ -48,6 +51,65 @@ def call(model, prompt, temperature=0.3, timeout=240, retries=1, num_ctx=4096, n
                 log.error(f"[LLM] {model} failed after {retries} attempts: {e}")
                 return ""
     return ""
+
+
+def _call_openai_compatible(model, prompt, temperature, timeout, retries, num_predict):
+    """OpenAI-compatible /chat/completions backend.
+
+    Works with OpenAI, Groq, Together, OpenRouter, Ollama Cloud, vLLM,
+    LM Studio, and any other server speaking the chat-completions schema.
+    """
+    if not LLM_API_KEY:
+        log.error("[LLM] LLM_PROVIDER=openai but LLM_API_KEY is not set")
+        return ""
+    url = LLM_API_BASE.rstrip("/") + "/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {LLM_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": LLM_MODEL or model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        "stream": False,
+    }
+    if num_predict is not None:
+        payload["max_tokens"] = num_predict
+    for attempt in range(retries):
+        try:
+            response = requests.post(
+                url, json=payload, headers=headers,
+                timeout=(CONNECT_TIMEOUT, timeout),
+            )
+            if response.status_code in (429, 503):
+                wait = 15 * (attempt + 1)
+                log.warning(f"[LLM] API busy ({response.status_code}), waiting {wait}s...")
+                time.sleep(wait)
+                continue
+            if response.status_code >= 400:
+                log.error(f"[LLM] API HTTP {response.status_code}: {response.text[:300]}")
+                return ""
+            data = response.json()
+            text = data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+            return text
+        except requests.exceptions.ConnectTimeout:
+            wait = 10 * (attempt + 1)
+            log.warning(f"[LLM] Connect timeout (attempt {attempt+1}/{retries}), waiting {wait}s...")
+            time.sleep(wait)
+        except Exception as e:
+            if attempt < retries - 1:
+                time.sleep(5 * (attempt + 1))
+            else:
+                log.error(f"[LLM] {model} failed after {retries} attempts: {e}")
+                return ""
+    return ""
+
+
+def call(model, prompt, temperature=0.3, timeout=240, retries=1, num_ctx=4096, num_predict=512):
+    if LLM_PROVIDER == "openai":
+        return _call_openai_compatible(model, prompt, temperature, timeout, retries, num_predict)
+    return _call_ollama(model, prompt, temperature, timeout, retries, num_ctx, num_predict)
 
 
 def call_json(model, prompt, temperature=0.3, timeout=240, retries=1, num_ctx=4096, num_predict=512):
@@ -80,6 +142,25 @@ def call_json(model, prompt, temperature=0.3, timeout=240, retries=1, num_ctx=40
 
 
 def health_check():
+    if LLM_PROVIDER == "openai":
+        if not LLM_API_KEY:
+            log.error("[!] LLM_PROVIDER=openai but LLM_API_KEY not set")
+            return False
+        try:
+            r = requests.get(
+                LLM_API_BASE.rstrip("/") + "/models",
+                headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                log.info(f"[OK] LLM API reachable at {LLM_API_BASE} (model={LLM_MODEL or RESEARCHER_MODEL})")
+                return True
+            # Some endpoints don't expose /models; treat as soft pass.
+            log.warning(f"[!] /models returned {r.status_code} — proceeding anyway")
+            return True
+        except Exception as e:
+            log.error(f"[!] LLM API not accessible: {e}")
+            return False
     try:
         r = requests.get(OLLAMA_TAGS, timeout=5)
         if r.status_code != 200:

@@ -8,11 +8,32 @@ result into a textbook-style curriculum for a given topic.
 
 ## Requirements
 
+You need **one** LLM backend — pick A or B:
+
+**A. Local — Ollama** (default, no API key, runs offline)
+- Install [Ollama](https://ollama.com/download) and start it (`ollama serve`).
+- Pull a model and set its name in env, e.g.:
+  ```bash
+  ollama pull llama3.1:8b
+  export LLM_MODEL=llama3.1:8b   # or edit RESEARCHER_MODEL in config.py
+  ```
+
+**B. Remote — any OpenAI-compatible API** (OpenAI, Groq, Together, OpenRouter,
+Ollama Cloud, vLLM, LM Studio, …)
+```bash
+export LLM_PROVIDER=openai
+export LLM_API_KEY=sk-...
+export LLM_API_BASE=https://api.openai.com/v1   # or your provider's base
+export LLM_MODEL=gpt-4o-mini                    # or any model the provider serves
+```
+
+Without a working LLM backend, non-LLM crawler agents (Wikipedia, Gutenberg,
+Archive, Stack Exchange, …) still run, but the topic-bootstrap, gap-node
+expansion, curriculum planner, fact checker, glossary, and quality gate are
+skipped.
+
+Other requirements:
 - **Python 3.11+** (developed against 3.14)
-- **[Ollama](https://ollama.com)** running locally on `http://localhost:11434`
-  with a model that matches `RESEARCHER_MODEL` / `QUERY_MODEL` in `config.py`
-  (defaults to `ministral-3:3b-cloud`). Without Ollama, LLM-driven bootstrap
-  and gap-node expansion are skipped; non-LLM agents still run.
 - See `requirements.txt` for Python deps.
 
 ## Setup
@@ -30,9 +51,13 @@ Optional environment variables:
 
 | Variable          | Purpose                                                      |
 |-------------------|--------------------------------------------------------------|
-| `HARVESTER_BASE`  | Override the base directory (vault, fingerprints, logs land here) |
+| `LLM_PROVIDER`    | `ollama` (default) or `openai` for any OpenAI-compatible API |
+| `LLM_API_KEY`     | API key when `LLM_PROVIDER=openai`                           |
+| `LLM_API_BASE`    | API base URL (default `https://api.openai.com/v1`)           |
+| `LLM_MODEL`       | Model name — overrides `RESEARCHER_MODEL`/`QUERY_MODEL`      |
 | `OLLAMA_BASE`     | Ollama generate endpoint (default `http://localhost:11434/api/generate`) |
 | `OLLAMA_TAGS`     | Ollama tags endpoint                                         |
+| `HARVESTER_BASE`  | Override the base directory (vault, fingerprints, logs land here) |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key (enables YouTube transcript agent)   |
 
 ## Running

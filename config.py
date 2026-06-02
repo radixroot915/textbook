@@ -9,12 +9,24 @@ MAP_PATH = os.path.join(BASE_DIR, "knowledge_map.json")
 OLLAMA_BASE = os.environ.get("OLLAMA_BASE", "http://localhost:11434/api/generate")
 OLLAMA_TAGS = os.environ.get("OLLAMA_TAGS", "http://localhost:11434/api/tags")
 
+# LLM backend selection.
+#   "ollama" (default): talks to a local Ollama server at OLLAMA_BASE.
+#   "openai": talks to any OpenAI-compatible /chat/completions endpoint
+#             (OpenAI, Groq, Together, OpenRouter, Ollama Cloud, vLLM, …).
+# When provider == "openai", LLM_API_KEY is required, LLM_API_BASE points at
+# the API root (default https://api.openai.com/v1), and LLM_MODEL overrides
+# the model names below if set.
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+LLM_API_BASE = os.environ.get("LLM_API_BASE", "https://api.openai.com/v1")
+LLM_MODEL = os.environ.get("LLM_MODEL", "")
+
 # Optional API keys — agents degrade gracefully when absent
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
-SEED_MODEL = "ministral-3:3b-cloud"
+SEED_MODEL = LLM_MODEL or "ministral-3:3b-cloud"
 
-RESEARCHER_MODEL = "ministral-3:3b-cloud"
-QUERY_MODEL = "ministral-3:3b-cloud"
+RESEARCHER_MODEL = LLM_MODEL or "ministral-3:3b-cloud"
+QUERY_MODEL = LLM_MODEL or "ministral-3:3b-cloud"
 AGENT_CONCURRENCY = 3
 SCRAPE_SLEEP_SECONDS = 2
 LEXICON_MIN_HITS_CLEAN = 2
