@@ -5,7 +5,9 @@ param(
     [int]$MinFiles = 100,
     [int]$MaxIterations = 5,
 
-    [switch]$SkipCleanup
+    [switch]$SkipCleanup,
+
+    [switch]$SkipCompile
 )
 
 $ErrorActionPreference = "Stop"
@@ -66,7 +68,8 @@ try {
 # ── 4. Run harvester ──────────────────────────────────────────────────────────
 Write-Step "Running harvester: '$Topic' (min_files=$MinFiles, max_iter=$MaxIterations)"
 Set-Location $ScriptDir
-& $Python main.py $Topic $MinFiles $MaxIterations
+$compileFlag = if ($SkipCompile) { "--skip-compile" } else { "" }
+& $Python main.py $Topic $MinFiles $MaxIterations $compileFlag
 if ($LASTEXITCODE -ne 0) { Fail "Harvester exited with code $LASTEXITCODE" }
 
 # ── 5. Dedup cleanup ──────────────────────────────────────────────────────────

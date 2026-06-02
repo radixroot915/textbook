@@ -55,6 +55,13 @@ class ResearcherAgent:
             if "nodes" not in map_data[self.topic]:
                 map_data[self.topic]["nodes"] = {}
             for n in nodes:
+                if not isinstance(n, str):
+                    continue
+                words = n.strip().split()
+                if len(words) > 6:
+                    n = " ".join(words[:6])
+                if not n:
+                    continue
                 if n not in map_data[self.topic]["nodes"]:
                     map_data[self.topic]["nodes"][n] = {"status": "pending", "files": []}
             self._save_map(map_data)
@@ -93,8 +100,18 @@ class ResearcherAgent:
         nodes_data = topic_data.setdefault("nodes", {})
         scores = topic_data.setdefault("frontier_scores", {})
 
+        from drift_monitor import is_node_on_topic
         for new_node in result:
             if not isinstance(new_node, str) or new_node in self.discovered:
+                continue
+            words = new_node.strip().split()
+            if len(words) > 6:
+                new_node = " ".join(words[:6])
+            if not new_node or new_node in self.discovered:
+                continue
+            ok, reason = is_node_on_topic(self.topic, new_node, self.lexicon)
+            if not ok:
+                log.info(f"[DRIFT] reject node '{new_node[:60]}' — {reason}")
                 continue
             scores[new_node] = scores.get(new_node, 0) + 1
             if new_node not in nodes_data:
@@ -136,6 +153,69 @@ class ResearcherAgent:
             self.frontier.sort(key=lambda x: x[1], reverse=True)
         return new_nodes
 
+    def generate_deep_dive_nodes(self, min_corpus: int = 5) -> list:
+        """Generate a tier-3 (theoretical / advanced) research frontier
+        ONLY when the foundational corpus is already populated. Each new
+        node is tagged tier='theoretical' so the coordinator routes it to
+        academic/technical agents preferentially.
+
+        Returns the list of new node strings added.
+        """
+        from llm.prompts import DEEP_DIVE_FRONTIER_PROMPT
+
+        map_data = self._load_map()
+        topic_data = map_data.setdefault(self.topic, {})
+        nodes_data = topic_data.setdefault("nodes", {})
+        grounded = [n for n, info in nodes_data.items()
+                    if info.get("status") == "grounded"]
+        if len(grounded) < min_corpus:
+            log.info(f"[deep-dive] corpus too thin ({len(grounded)} < "
+                     f"{min_corpus}) — skipping")
+            return []
+
+        prompt = DEEP_DIVE_FRONTIER_PROMPT.format(
+            topic=self.topic.replace('_', ' '),
+            covered_nodes="\n".join(f"- {n}" for n in grounded[:25]),
+            lexicon=", ".join(self.lexicon[:20]),
+        )
+        result = call_json(RESEARCHER_MODEL, prompt, temperature=0.4,
+                           timeout=120, num_ctx=4096, num_predict=512)
+        if not isinstance(result, list):
+            log.warning(f"[deep-dive] LLM returned {type(result).__name__}")
+            return []
+
+        scores = topic_data.setdefault("frontier_scores", {})
+        from drift_monitor import is_node_on_topic
+        added = []
+        for node in result:
+            if not isinstance(node, str):
+                continue
+            words = node.strip().split()
+            if len(words) > 6:
+                node = " ".join(words[:6])
+            if not node or node in self.discovered:
+                continue
+            ok, reason = is_node_on_topic(self.topic, node, self.lexicon)
+            if not ok:
+                log.info(f"[DRIFT] reject deep-dive node '{node[:60]}' — {reason}")
+                continue
+            scores[node] = scores.get(node, 0) + 2  # higher priority
+            nodes_data[node] = {
+                "status": "pending",
+                "files": [],
+                "discovery": "deep_dive",
+                "tier": "theoretical",
+            }
+            self.frontier.append((node, scores[node]))
+            added.append(node)
+
+        if added:
+            self.frontier.sort(key=lambda x: -x[1])
+            self._save_map(map_data)
+            log.info(f"[deep-dive] +{len(added)} theoretical nodes: "
+                     f"{', '.join(n[:40] for n in added[:3])}...")
+        return added
+
     def identify_gaps(self):
         map_data = self._load_map()
         nodes_data = map_data.get(self.topic, {}).get("nodes", {})
@@ -155,8 +235,13 @@ class ResearcherAgent:
         topic_data = map_data.setdefault(self.topic, {})
         nodes_data = topic_data.setdefault("nodes", {})
 
+        from drift_monitor import is_node_on_topic
         for gap in result:
             if not isinstance(gap, str) or gap in self.discovered:
+                continue
+            ok, reason = is_node_on_topic(self.topic, gap, self.lexicon)
+            if not ok:
+                log.info(f"[DRIFT] reject gap node '{gap[:60]}' — {reason}")
                 continue
             nodes_data[gap] = {"status": "pending", "files": [], "discovery": "gap_analysis"}
             self.frontier.append((gap, 2))
@@ -311,7 +396,10 @@ def _keyword_grit(chunk: str, topic: str, lexicon: list) -> list:
         action_hits = _ACTION_PAT.findall(sent)
         has_measure = bool(_MEASURE_PAT.search(sent))
         # Include if: (lexicon term + action verb) OR (action verb + measurement)
-        if (lex_hits and action_hits) or (action_hits and has_measure):
+        # OR (lexicon term + measurement)  — pure-spec sentences like
+        # "Annealing range: 350–375°F" carry real technical content even
+        # without action verbs and must not be dropped.
+        if (lex_hits and action_hits) or (action_hits and has_measure) or (lex_hits and has_measure):
             tools = list({h.lower() for h in action_hits[:3]} | set(lex_hits[:2]))
             items.append({
                 "task": sent.strip()[:150],

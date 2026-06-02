@@ -14,7 +14,20 @@ from agents.wikisource_agent import WikiSourceAgent
 from agents.wikibooks_agent import WikibooksAgent
 from agents.archive_agent import ArchiveAgent
 from agents.stackexchange_agent import StackExchangeAgent
-from agents.base_source_agent import _TITLE_BLOCKLIST
+from agents.wikipedia_agent import WikipediaAgent
+from agents.youtube_agent import YouTubeTranscriptAgent
+from agents.duckduckgo_agent import DuckDuckGoAgent
+from agents.hathitrust_agent import HathiTrustAgent
+from agents.dtic_agent import DTICAgent
+from agents.libretexts_agent import LibreTextsAgent
+from agents.core_agent import COREAgent
+from agents.skillscommons_agent import SkillsCommonsAgent
+from agents.everyspec_agent import EverySpecAgent
+from agents.osha_agent import OSHATechManualAgent
+from agents.reddit_agent import RedditAgent
+from agents.cited_url_agent import CitedURLAgent
+from agents.hub_agent import HubAgent
+from agents.base_source_agent import _TITLE_BLOCKLIST, set_topic_bouncer
 from curriculum.builder import build_curriculum
 from curriculum.video_finder import build_video_guide
 from curriculum.materials import build_materials_list
@@ -23,33 +36,70 @@ log = logging.getLogger(__name__)
 
 WORKER_TIMEOUT = 600
 
-HIGH_VALUE_SEEN = 3     # appearances across node searches before flagging
+HIGH_VALUE_SEEN = 2     # appearances across node searches before flagging
 HIGH_VALUE_SAVE = 1     # must have saved at least once (quality gate)
 HIGH_VALUE_LIMIT = 8    # candidate pull depth for flagged sources (vs normal 3)
+DEFAULT_PULL_LIMIT = 5  # baseline candidates per node (was 3)
 
 
 class Coordinator:
-    def __init__(self, topic: str, min_files: int = 100, max_iterations: int = 5):
+    def __init__(self, topic: str, min_files: int = 100, max_iterations: int = 5, skip_compile: bool = False, hub_urls: list[str] | None = None):
         self.topic = topic
         self.min_files = min_files
         self.max_iterations = max_iterations
+        self.skip_compile = skip_compile
         self.researcher = ResearcherAgent(topic)
         self.sources = [
+            WikipediaAgent(),
             GutenbergAgent(),
             OpenLibraryAgent(),
             WikiSourceAgent(),
             WikibooksAgent(),
             ArchiveAgent(),
             StackExchangeAgent(),
+            YouTubeTranscriptAgent(),
+            DuckDuckGoAgent(),
+            HathiTrustAgent(),
+            DTICAgent(),
+            LibreTextsAgent(),
+            COREAgent(),
+            SkillsCommonsAgent(),
+            EverySpecAgent(),
+            OSHATechManualAgent(),
+            RedditAgent(),
+            CitedURLAgent(),
         ]
+        for url in (hub_urls or []):
+            self.sources.append(HubAgent(url))
+
+        # Reorder sources by historical quality for this topic. Agents with
+        # high used/saved ratios get tried first; new agents get neutral
+        # priority so they still get a fair shot.
+        try:
+            from agent_stats import get_topic_priorities
+            prios = get_topic_priorities(topic)
+            if prios:
+                self.sources.sort(key=lambda s: -prios.get(s.source_name, 1.0))
+                top = ", ".join(f"{s.source_name}={prios.get(s.source_name, 1.0):.2f}"
+                                for s in self.sources[:5])
+                log.info(f"[*] Source priority order — top 5: {top}")
+        except Exception as e:
+            log.debug(f"[*] priority reorder skipped: {e}")
+
         self._skippable_ids: set = set()
         self._source_stats: dict = {}   # iid -> {"seen": int, "saved": int}
         self._high_value: set = set()
         self._stats_lock = threading.Lock()
         self._load_high_value()
 
-    async def run(self):
+    async def run(self) -> list:
+        """Run one full harvest+compile cycle. Returns gap_nodes for the next cycle."""
+        self.gap_nodes: list = []
         log.info(f"\n=== HARVESTER: {self.topic.upper()} ===")
+
+        # Scope dedup to this topic so vaults don't block each other
+        set_topic_bouncer(self.topic)
+        log.info(f"[*] Dedup scoped to: fingerprints_{self.topic}.txt")
 
         log.info("[*] Bootstrapping research frontier...")
         nodes, lexicon = self.researcher.bootstrap()
@@ -65,23 +115,69 @@ class Coordinator:
         while iteration < self.max_iterations and total_files < self.min_files:
             log.info(f"\n--- [ITERATION {iteration + 1}/{self.max_iterations}] ---")
 
-            batch = [n for n, _ in self.researcher.frontier[:6]]
+            # Pull a batch and drift-gate every node before processing —
+            # catches stale bad nodes from prior runs that survived in the
+            # knowledge_map (e.g. "Administrative districts" from a polluted
+            # gap analysis in a previous cycle).
+            try:
+                from drift_monitor import is_node_on_topic
+            except Exception:
+                is_node_on_topic = None
+
+            def _filter_batch(candidates):
+                if not is_node_on_topic:
+                    return candidates
+                out = []
+                for n in candidates:
+                    ok, reason = is_node_on_topic(self.topic, n, lexicon)
+                    if not ok:
+                        log.info(f"[DRIFT] skip stale node '{n[:60]}' — {reason}")
+                        # Mark in map so it doesn't keep getting tried
+                        try:
+                            self.researcher.mark_stalled(n)
+                        except Exception:
+                            pass
+                        continue
+                    out.append(n)
+                return out
+
+            batch = _filter_batch([n for n, _ in self.researcher.frontier[:12]])[:6]
             if not batch:
-                log.info("[*] Frontier empty — running gap analysis...")
+                log.info("[*] Frontier empty (or all filtered) — running gap analysis...")
                 self.researcher.identify_gaps()
-                batch = [n for n, _ in self.researcher.frontier[:6]]
+                batch = _filter_batch([n for n, _ in self.researcher.frontier[:12]])[:6]
             if not batch:
                 log.info("[*] Running lexicon sweep for crossover technique content...")
                 new = self.researcher.lexicon_sweep()
                 log.info(f"[*] Lexicon sweep added {len(new)} technique nodes")
-                batch = [n for n, _ in self.researcher.frontier[:6]]
+                batch = _filter_batch([n for n, _ in self.researcher.frontier[:12]])[:6]
             if not batch:
                 log.info("[*] No new nodes found. Stopping.")
                 break
 
+            # Look up node tier from the knowledge_map; agents with a
+            # tier_affinity that excludes this node's tier are skipped.
+            # Nodes without an explicit tier go to all agents (default).
+            map_data = self.researcher._load_map()
+            nodes_info = map_data.get(self.topic, {}).get("nodes", {})
+
+            def _agents_for_node(node: str):
+                tier = nodes_info.get(node, {}).get("tier")
+                if not tier:
+                    return self.sources
+                matching = [
+                    s for s in self.sources
+                    if not getattr(s, "tier_affinity", None)
+                    or tier in s.tier_affinity
+                ]
+                # Fallback to all sources if nothing matches the tier —
+                # better to over-search than to drop the node entirely
+                return matching or self.sources
+
             work_queue = asyncio.Queue()
             for node in batch:
-                for source in self.sources:
+                agents = _agents_for_node(node)
+                for source in agents:
                     await work_queue.put((node, source))
 
             workers = set(
@@ -123,9 +219,12 @@ class Coordinator:
 
         self._save_grit(grit)
 
-        if total_files > 0:
+        if self.skip_compile:
+            log.info("[*] --skip-compile set — skipping curriculum build")
+        elif total_files > 0:
             log.info("[*] Building curriculum...")
-            build_curriculum(self.topic, self.researcher.lexicon, grit)
+            result = build_curriculum(self.topic, self.researcher.lexicon, grit)
+            self.gap_nodes = result.get("gap_nodes", [])
             log.info("[*] Building video guide...")
             build_video_guide(self.topic, grit)
             log.info("[*] Building materials list...")
@@ -136,7 +235,9 @@ class Coordinator:
         log.info(f"\n=== COMPLETE ===")
         log.info(f"Files harvested: {total_files}")
         log.info(f"Grit items extracted: {len(grit)}")
+        log.info(f"Gap nodes for next cycle: {len(self.gap_nodes)}")
         log.info(f"Output: {os.path.join(VAULT_ROOT, self.topic, 'curriculum')}")
+        return self.gap_nodes
 
     async def _worker(self, queue: asyncio.Queue, lexicon: list):
         while True:
@@ -167,7 +268,7 @@ class Coordinator:
                 (c.get("identifier") or c.get("url", "")) in self._high_value
                 for c in candidates[:HIGH_VALUE_LIMIT]
             )
-            limit = HIGH_VALUE_LIMIT if any_high_value else 3
+            limit = HIGH_VALUE_LIMIT if any_high_value else DEFAULT_PULL_LIMIT
 
             successes = 0
             for candidate in candidates[:limit]:
@@ -252,6 +353,10 @@ class Coordinator:
                 data = json.load(f)
             hv = data.get(self.topic, {}).get("high_value_sources", [])
             self._high_value.update(hv)
+            junk = data.get(self.topic, {}).get("junk_sources", [])
+            self._skippable_ids.update(junk)
+            if junk:
+                log.info(f"[*] Junk sources loaded: {len(junk)} — will skip on fetch")
         except Exception:
             pass
 

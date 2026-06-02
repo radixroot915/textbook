@@ -16,6 +16,7 @@ class GutenbergAgent(BaseSourceAgent):
     min_hits = 3
     apply_html_filter = False
     fetch_sleep = SLEEP
+    tier_affinity = {"foundational", "theoretical"}
 
     def search(self, node: str, topic: str, lexicon: list) -> list:
         node = node.replace('_', ' ')

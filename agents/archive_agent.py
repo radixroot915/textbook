@@ -18,6 +18,7 @@ class ArchiveAgent(BaseSourceAgent):
     min_hits = 2
     apply_html_filter = True
     fetch_sleep = 2.0
+    tier_affinity = {"theoretical", "practical", "reference"}
 
     def search(self, node: str, topic: str, lexicon: list) -> list:
         node = node.replace('_', ' ')

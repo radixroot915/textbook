@@ -17,6 +17,7 @@ class WikiSourceAgent(BaseSourceAgent):
     min_hits = 2
     apply_html_filter = False
     fetch_sleep = SLEEP
+    tier_affinity = {"foundational", "practical"}
 
     def search(self, node: str, topic: str, lexicon: list) -> list:
         node = node.replace('_', ' ')

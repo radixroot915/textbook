@@ -220,11 +220,26 @@ __marimo__/
 # Harvester runtime
 vault/
 _scratch/
+scratch/
 temp/
 fingerprints.txt
+fingerprints_*.txt
 knowledge_map.json
 model/
 Modelfile
 *.log
 test_*.txt
 logs/
+runs/
+run_log.txt
+agent_stats.json
+file_classifications.json
+file_origins.json
+cited_urls.json
+claims_*.json
+drift_log_*.json
+verify_*.md
+
+# Editor/agent local state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

@@ -4,8 +4,9 @@ from config import HASH_PATH, MAX_FINGERPRINTS, MIN_TEXT_LENGTH, SIMHASH_THRESHO
 
 
 class Bouncer:
-    def __init__(self, threshold=SIMHASH_THRESHOLD):
+    def __init__(self, threshold=SIMHASH_THRESHOLD, path=None):
         self.threshold = threshold
+        self.path = path or HASH_PATH
         self.fingerprints = []
         self._load_memory()
 
@@ -24,8 +25,8 @@ class Bouncer:
         return fingerprint
 
     def _load_memory(self):
-        if os.path.exists(HASH_PATH):
-            with open(HASH_PATH, "r", encoding="utf-8") as f:
+        if os.path.exists(self.path):
+            with open(self.path, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
                         try:
@@ -53,5 +54,5 @@ class Bouncer:
         if len(self.fingerprints) > MAX_FINGERPRINTS:
             self.fingerprints = self.fingerprints[-MAX_FINGERPRINTS:]
 
-        with open(HASH_PATH, "a", encoding="utf-8") as f:
+        with open(self.path, "a", encoding="utf-8") as f:
             f.write(f"{fp:016x}\n")

@@ -12,7 +12,9 @@ log = logging.getLogger(__name__)
 
 
 
-def call(model, prompt, temperature=0.3, timeout=60, retries=1, num_ctx=4096, num_predict=512):
+CONNECT_TIMEOUT = 10   # fail fast if Ollama isn't accepting connections
+
+def call(model, prompt, temperature=0.3, timeout=240, retries=1, num_ctx=4096, num_predict=512):
     options = {"temperature": temperature}
     if num_ctx is not None:
         options["num_ctx"] = num_ctx
@@ -24,9 +26,21 @@ def call(model, prompt, temperature=0.3, timeout=60, retries=1, num_ctx=4096, nu
                 OLLAMA_BASE,
                 json={"model": model, "prompt": prompt, "stream": False,
                       "keep_alive": "10m", "options": options},
-                timeout=timeout
+                timeout=(CONNECT_TIMEOUT, timeout),   # (connect, read)
             )
-            return response.json().get("response", "")
+            if response.status_code in (429, 503):
+                # Ollama overloaded — back off and retry
+                wait = 15 * (attempt + 1)
+                log.warning(f"[LLM] Ollama busy ({response.status_code}), waiting {wait}s...")
+                time.sleep(wait)
+                continue
+            text = response.json().get("response", "")
+            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+            return text
+        except requests.exceptions.ConnectTimeout:
+            wait = 10 * (attempt + 1)
+            log.warning(f"[LLM] Connect timeout (attempt {attempt+1}/{retries}), waiting {wait}s...")
+            time.sleep(wait)
         except Exception as e:
             if attempt < retries - 1:
                 time.sleep(5 * (attempt + 1))
@@ -36,12 +50,14 @@ def call(model, prompt, temperature=0.3, timeout=60, retries=1, num_ctx=4096, nu
     return ""
 
 
-def call_json(model, prompt, temperature=0.3, timeout=60, retries=1, num_ctx=4096, num_predict=512):
+def call_json(model, prompt, temperature=0.3, timeout=240, retries=1, num_ctx=4096, num_predict=512):
     raw = call(model, prompt, temperature=temperature, timeout=timeout, retries=retries, num_ctx=num_ctx, num_predict=num_predict)
     if not raw:
         return None
+    # Strip qwen3 thinking blocks
+    cleaned = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
     # Strip markdown code fences
-    cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip().rstrip('`').strip()
+    cleaned = re.sub(r'```(?:json)?\s*', '', cleaned).strip().rstrip('`').strip()
     try:
         return json.loads(cleaned)
     except Exception:

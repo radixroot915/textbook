@@ -10,3 +10,4 @@ class WikibooksAgent(WikiSourceAgent):
     api_url = "https://en.wikibooks.org/w/api.php"
     priority = 2
     min_hits = 2
+    tier_affinity = {"foundational", "practical"}
