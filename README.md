@@ -19,18 +19,84 @@ You need **one** LLM backend — pick A or B:
   ```
 
 **B. Remote — any OpenAI-compatible API** (OpenAI, Groq, Together, OpenRouter,
-Ollama Cloud, vLLM, LM Studio, …)
-```bash
-export LLM_PROVIDER=openai
-export LLM_API_KEY=sk-...
-export LLM_API_BASE=https://api.openai.com/v1   # or your provider's base
-export LLM_MODEL=gpt-4o-mini                    # or any model the provider serves
-```
+Ollama Cloud, vLLM, LM Studio, …) — see the walkthrough below.
 
 Without a working LLM backend, non-LLM crawler agents (Wikipedia, Gutenberg,
 Archive, Stack Exchange, …) still run, but the topic-bootstrap, gap-node
 expansion, curriculum planner, fact checker, glossary, and quality gate are
 skipped.
+
+### API onboarding (option B, step-by-step)
+
+The harvester talks to any service that speaks OpenAI's `/chat/completions`
+schema. Pick a provider, get a key, set four env vars, smoke-test.
+
+**1. Pick a provider and get an API key**
+
+| Provider     | Sign up                                 | Typical base URL                          | Example model            |
+|--------------|-----------------------------------------|-------------------------------------------|--------------------------|
+| OpenAI       | https://platform.openai.com/api-keys    | `https://api.openai.com/v1`               | `gpt-4o-mini`            |
+| Groq (fast, free tier) | https://console.groq.com/keys | `https://api.groq.com/openai/v1`          | `llama-3.1-8b-instant`   |
+| OpenRouter (multi-model) | https://openrouter.ai/keys  | `https://openrouter.ai/api/v1`            | `meta-llama/llama-3.1-8b-instruct` |
+| Together AI  | https://api.together.xyz/settings/api-keys | `https://api.together.xyz/v1`           | `meta-llama/Llama-3.1-8B-Instruct-Turbo` |
+| Ollama Cloud | https://ollama.com/settings/keys        | `https://ollama.com/v1`                   | `ministral-3:3b-cloud`   |
+
+If you're unsure, **Groq** is the quickest to start (free tier, no credit card,
+fast inference).
+
+**2. Set the four env vars**
+
+macOS / Linux (bash/zsh):
+
+```bash
+export LLM_PROVIDER=openai
+export LLM_API_KEY=<paste-key-here>
+export LLM_API_BASE=https://api.groq.com/openai/v1     # ← from the table above
+export LLM_MODEL=llama-3.1-8b-instant                  # ← from the table above
+```
+
+Windows (PowerShell):
+
+```powershell
+$env:LLM_PROVIDER = "openai"
+$env:LLM_API_KEY  = "<paste-key-here>"
+$env:LLM_API_BASE = "https://api.groq.com/openai/v1"
+$env:LLM_MODEL    = "llama-3.1-8b-instant"
+```
+
+To make it permanent, add the lines to your shell profile (`~/.zshrc`,
+`~/.bashrc`) or — on Windows — use `setx LLM_API_KEY "..."` in a new
+PowerShell window.
+
+**3. Smoke-test the connection**
+
+```bash
+python -c "from llm.ollama_client import health_check, call; \
+           assert health_check(); print(call('x','Say hi in 3 words.'))"
+```
+
+Expected: a one-line greeting. If you see `LLM_API_KEY not set`, the env var
+didn't reach Python — re-export in the same shell you'll run `main.py` from.
+If you see HTTP 401, the key is wrong. HTTP 404 usually means `LLM_API_BASE`
+is missing the `/v1` (or the model name doesn't exist on this provider).
+
+**4. Run a harvest**
+
+```bash
+python main.py "leatherworking" 50 3
+```
+
+The first log line should read `Ollama OK` *or* `LLM API reachable at
+<your base>` — confirming the request hit your provider, not localhost.
+
+**Cost / rate-limit notes**
+- One harvest of `min_files=100` typically issues a few hundred LLM calls
+  (bootstrap, per-node expansion, curriculum planning, fact-check, glossary,
+  quality gate). Most prompts are small (<2K tokens).
+- Free tiers (Groq, OpenRouter free models) are usually fine for one or two
+  topics; for bulk runs use a paid tier or a local Ollama model.
+- The client retries 429/503 with exponential backoff, so brief rate limits
+  self-recover.
 
 Other requirements:
 - **Python 3.11+** (developed against 3.14)
