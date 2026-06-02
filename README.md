@@ -18,8 +18,8 @@ You need **one** LLM backend — pick A or B:
   export LLM_MODEL=llama3.1:8b   # or edit RESEARCHER_MODEL in config.py
   ```
 
-**B. Remote — any OpenAI-compatible API** (OpenAI, Groq, Together, OpenRouter,
-Ollama Cloud, vLLM, LM Studio, …) — see the walkthrough below.
+**B. Remote — any OpenAI-compatible API** (OpenAI, Google Gemini, Groq, Together,
+OpenRouter, Ollama Cloud, vLLM, LM Studio, …) — see the walkthrough below.
 
 Without a working LLM backend, non-LLM crawler agents (Wikipedia, Gutenberg,
 Archive, Stack Exchange, …) still run, but the topic-bootstrap, gap-node
@@ -40,6 +40,7 @@ schema. Pick a provider, get a key, set four env vars, smoke-test.
 | OpenRouter (multi-model) | https://openrouter.ai/keys  | `https://openrouter.ai/api/v1`            | `meta-llama/llama-3.1-8b-instruct` |
 | Together AI  | https://api.together.xyz/settings/api-keys | `https://api.together.xyz/v1`           | `meta-llama/Llama-3.1-8B-Instruct-Turbo` |
 | Ollama Cloud | https://ollama.com/settings/keys        | `https://ollama.com/v1`                   | `ministral-3:3b-cloud`   |
+| Google Gemini | https://aistudio.google.com/apikey     | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.5-flash`       |
 
 If you're unsure, **Groq** is the quickest to start (free tier, no credit card,
 fast inference).
