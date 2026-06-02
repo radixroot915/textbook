@@ -179,6 +179,28 @@ Related knobs in `config.py`: `MAX_CANDIDATES` (per-source fetch cap),
 `AGENT_CONCURRENCY` (parallel workers), `MIN_TEXT_LENGTH` (admission floor),
 `SIMHASH_THRESHOLD` (dedup aggressiveness).
 
+**Realistic presets**
+
+| Use case             | Command                                                  | Wall time¹ | Vault files |
+|----------------------|----------------------------------------------------------|------------|-------------|
+| Smoke test           | `python main.py "<topic>" 5 1 1 --skip-compile`          | 1–3 min    | 5–15        |
+| Quick draft          | `python main.py "<topic>" 30 3 1`                        | 10–20 min  | 25–50       |
+| Default              | `python main.py "<topic>" 100 5 1`                       | 30–60 min  | 75–150      |
+| Deep dive            | `python main.py "<topic>" 250 8 2`                       | 1.5–3 hrs  | 200–350     |
+| Exhaustive (narrow topic likely to plateau early) | `python main.py "<topic>" 500 10 3` | 3–6 hrs    | 300–500     |
+
+¹ Wall time assumes a healthy LLM backend (Groq/Gemini Flash or a local
+7–8B model) and no source-side rate limiting. API tier matters more than
+these flags above ~100 files.
+
+Notes:
+- A **narrow** topic ("frame loom weaving") will plateau earlier than a
+  **broad** one ("carpentry") — pushing `min_files` past what the open web
+  actually contains just burns iterations.
+- Bumping `max_cycles` only helps if the quality gate is failing — it
+  re-runs the loop with injected gap nodes. If cycle 1 already produces a
+  "usable" textbook, cycles 2+ are skipped automatically.
+
 ## Repo layout
 
 ```
