@@ -150,6 +150,35 @@ python main.py "<topic>" [min_files] [max_iterations] [max_cycles] [--skip-compi
 Output lands in `vault/<topic>/`, with the compiled textbook under
 `vault/<topic>/curriculum/`.
 
+### Tuning `min_files` and `max_iterations`
+
+The core loop is:
+
+```python
+while iteration < max_iterations and total_files < min_files:
+    # fetch a batch of 6 nodes × ~18 source agents, dedup, filter, score
+```
+
+It also exits early if the researcher's frontier runs out of new nodes
+("No new nodes found. Stopping.").
+
+| Parameter        | What it controls                                          | Practical range |
+|------------------|-----------------------------------------------------------|-----------------|
+| `min_files`      | Target vault size before the loop is allowed to stop. Docs shorter than `MIN_TEXT_LENGTH` (default 2500 chars) don't count. | 20–500 |
+| `max_iterations` | Hard cap on crawl iterations regardless of file count. Each iteration ≈ 6 nodes × 18 agents × up to `MAX_CANDIDATES` (80) HTTP requests. | 3–10 |
+| `max_cycles`     | Outer cycles. After a cycle, the quality gate evaluates the textbook and, if unusable, gap nodes are injected and the loop runs again. | 1–3 |
+
+There are no hard floors/ceilings in code:
+- `min_files=0` or `max_iterations=0` → loop skipped; goes straight to
+  synthesis/curriculum on the existing vault.
+- Very high values are accepted, but the frontier usually exhausts after
+  5–7 iterations on a narrow topic, and source rate limits will throttle
+  you long before any internal cap.
+
+Related knobs in `config.py`: `MAX_CANDIDATES` (per-source fetch cap),
+`AGENT_CONCURRENCY` (parallel workers), `MIN_TEXT_LENGTH` (admission floor),
+`SIMHASH_THRESHOLD` (dedup aggressiveness).
+
 ## Repo layout
 
 ```
