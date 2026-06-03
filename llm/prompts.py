@@ -1,15 +1,17 @@
-# All LLM prompt templates. Llama3 format: [INST]...[/INST]
-# TinyLlama format: <|system|>...<|user|>...<|assistant|>
+# All LLM prompt templates.
+# Prompts are sent as plain user content; the API/Ollama chat template handles
+# role tagging. Do not add [INST]/[/INST], <|system|>, or other model-specific
+# wrappers here — they end up as literal text the model sees and waste tokens.
 
-SEED_PACKET_PROMPT = """[INST]Build a research seed for "{topic}".
+SEED_PACKET_PROMPT = """Build a research seed for "{topic}".
 
 Return a JSON object with two keys:
 - "nodes": 10 strings — 6 topic-specific subtopics AND 4 foundational technique names that underpin this craft. Technique nodes should be searchable as standalone topics (e.g. for knife sheaths: both "fold-over sheath pattern construction" AND "saddle stitching leather", "leather skiving method", "edge beveling and burnishing"). Be concrete and specific — not "basics" or "overview".
 - "lexicon": 12 domain-specific practitioner terms (real vocabulary used by craftspeople, not generic words like "technical", "standard", "process")
 
-Output ONLY valid JSON. No markdown fences.[/INST]"""
+Output ONLY valid JSON. No markdown fences."""
 
-FRONTIER_EXPANSION_PROMPT = """[INST]You are researching "{topic}" and found a document about "{current_node}".
+FRONTIER_EXPANSION_PROMPT = """You are researching "{topic}" and found a document about "{current_node}".
 
 Here is the start of the document (may contain a table of contents or chapter list):
 ---
@@ -21,9 +23,9 @@ Current research nodes already in the frontier:
 
 Identify up to 5 NEW specific subtopics that appear in this document but are NOT in the frontier list above. These should be concrete technical subtopics worth searching for independently.
 
-Output ONLY a JSON array of strings. If no new subtopics, output [].[/INST]"""
+Output ONLY a JSON array of strings. If no new subtopics, output []."""
 
-DEEP_DIVE_FRONTIER_PROMPT = """[INST]The collection on "{topic}" already covers the foundational ground:
+DEEP_DIVE_FRONTIER_PROMPT = """The collection on "{topic}" already covers the foundational ground:
 {covered_nodes}
 
 Lexicon (confirmed domain terms):
@@ -46,10 +48,10 @@ Each term must be a concrete, searchable phrase (3–6 words) that would land ac
 
 Avoid generic terms like "advanced techniques" or "materials science" without {topic}-specific framing.
 
-Output ONLY a JSON array of strings. No prose, no markdown.[/INST]"""
+Output ONLY a JSON array of strings. No prose, no markdown."""
 
 
-GAP_ANALYSIS_PROMPT = """[INST]You are building a complete offline knowledge base about "{topic}".
+GAP_ANALYSIS_PROMPT = """You are building a complete offline knowledge base about "{topic}".
 
 Documents collected so far cover these subtopics:
 {covered_nodes}
@@ -59,30 +61,10 @@ Lexicon (domain terms confirmed present in collected material):
 
 Identify 3-5 important technical subtopics or skill areas that are MISSING from the collection above. Focus on gaps that a practitioner would need for real competency.
 
-Output ONLY a JSON array of strings.[/INST]"""
+Output ONLY a JSON array of strings."""
 
 
-TEXTBOOK_CHAPTER_PROMPT = """[INST]Write a technical textbook chapter about "{chapter_topic}" as part of a comprehensive guide to "{topic}".
-
-Use this source material and extracted procedures:
-
-SOURCE EXCERPTS:
-{source_excerpts}
-
-EXTRACTED PROCEDURES:
-{grit_items}
-
-Write a well-structured chapter with:
-1. A brief theory/background section explaining the underlying principles
-2. Step-by-step procedures with specific values where available
-3. A safety section covering key hazards and controls
-4. A summary of key points
-
-Write in clear, direct technical prose. Use markdown headers (##, ###). Be specific — include actual values, measurements, and tool names from the source material. Aim for 600-900 words.
-
-Output ONLY the markdown chapter content.[/INST]"""
-
-CURRICULUM_PLAN_PROMPT = """[INST]Create a structured learning curriculum for "{topic}" as a self-taught skill.
+CURRICULUM_PLAN_PROMPT = """Create a structured learning curriculum for "{topic}" as a self-taught skill.
 
 Based on these skill areas and procedures:
 {skill_summary}
@@ -122,9 +104,9 @@ Generate a JSON curriculum with this structure:
 
 Make projects concrete and achievable. Beginner projects should be completable in a single session. Advanced projects should require multiple sessions and multiple skill combinations.
 
-Output ONLY valid JSON.[/INST]"""
+Output ONLY valid JSON."""
 
-MATERIALS_PROMPT = """[INST]Create a complete tools and materials list for learning "{topic}" as a beginner on a budget.
+MATERIALS_PROMPT = """Create a complete tools and materials list for learning "{topic}" as a beginner on a budget.
 
 Based on these procedures and tools mentioned in source material:
 {tools_mentioned}
@@ -134,19 +116,21 @@ Generate a JSON object with this structure:
   "topic": "{topic}",
   "notes": "<1-2 sentences about sourcing strategy, e.g. buy used, start minimal>",
   "tools": {{
-    "essential": [{{"name": "<tool>", "purpose": "<what it does>", "budget_option": "<where/how to get cheaply>", "est_cost": "<price range>"}}],
-    "upgrade_later": [{{"name": "<tool>", "purpose": "...", "est_cost": "..."}}],
-    "luxury": [{{"name": "<tool>", "purpose": "...", "est_cost": "..."}}]
+    "essential": [{{"name": "<tool>", "purpose": "<what it does>", "budget_option": "<where/how to get cheaply>", "cost_tier": "<low|medium|high|varies>"}}],
+    "upgrade_later": [{{"name": "<tool>", "purpose": "...", "cost_tier": "<low|medium|high|varies>"}}],
+    "luxury": [{{"name": "<tool>", "purpose": "...", "cost_tier": "<low|medium|high|varies>"}}]
   }},
-  "consumables": [{{"name": "<material>", "purpose": "...", "est_cost": "<per unit/quantity>"}}],
+  "consumables": [{{"name": "<material>", "purpose": "...", "cost_tier": "<low|medium|high|varies>"}}],
   "workspace": [{{"name": "<requirement>", "notes": "<minimum viable setup>"}}]
 }}
 
 Focus on budget-friendly real options. Essential = cannot start without. Upgrade later = improves quality/speed. Luxury = professional grade.
 
-Output ONLY valid JSON.[/INST]"""
+PRICING RULE: Use `cost_tier` only — NEVER write a specific currency amount, price range in dollars, or country-specific price. Prices vary by region, year, and supplier; inventing a number is worse than omitting it. Tiers: "low" (cheap hobbyist), "medium" (mid-range), "high" (professional), "varies" (range too wide to tier honestly).
 
-CHAPTER_PLAN_PROMPT = """[INST]You are organizing a comprehensive technical textbook about "{topic}".
+Output ONLY valid JSON."""
+
+CHAPTER_PLAN_PROMPT = """You are organizing a comprehensive technical textbook about "{topic}".
 
 CRITICAL: Every chapter must be about "{topic}" SPECIFICALLY. The title must contain the word "{topic}" or a directly-related domain term — never a generic word like "Joinery" or "Finishing" without qualifier. Do not include chapters about unrelated trades or skills. If "{topic}" has its own terms for connections/finishing/joining, use those (e.g. for leatherworking use "Stitching and Lacing" not "Joinery").
 
@@ -176,10 +160,10 @@ Return a JSON array where each element is:
 
 Each "topics" list should contain 5-8 concrete, searchable terms drawn from the lexicon and source headings above.
 
-Output ONLY the JSON array. No markdown fences. No explanation.[/INST]"""
+Output ONLY the JSON array. No markdown fences. No explanation."""
 
 
-DEEP_CHAPTER_PROMPT = """[INST]Write a comprehensive technical textbook chapter about "{chapter_title}" as part of a complete guide to "{topic}".
+DEEP_CHAPTER_PROMPT = """Write a comprehensive technical textbook chapter about "{chapter_title}" as part of a complete guide to "{topic}".
 
 This chapter must cover these specific topics:
 {expected_topics}
@@ -221,10 +205,10 @@ This applies even if the data feels "tabular" — tables consistently misalign a
 
 CONCLUSIONS: Every chapter must end with a `## Summary` section: 3-5 bulleted takeaways the reader should remember. Place this AFTER the body content and AFTER any Worked Examples, but BEFORE Try This and Review Questions. Do NOT scatter "key takeaways" mid-chapter.
 
-Output ONLY the markdown chapter content, starting after the chapter title. No preamble, no code fences.[/INST]"""
+Output ONLY the markdown chapter content, starting after the chapter title. No preamble, no code fences."""
 
 
-CLAIM_EXTRACT_PROMPT = """[INST]Extract specific verifiable factual claims from the following {topic} textbook chapter.
+CLAIM_EXTRACT_PROMPT = """Extract specific verifiable factual claims from the following {topic} textbook chapter.
 
 CHAPTER: {chapter_title}
 
@@ -236,10 +220,10 @@ Extract ONLY claims that contain specific, checkable facts: numbers, temperature
 Return a JSON array. Each element:
 {{"claim": "<the specific claim sentence>", "type": "<specification|procedure|safety|material>", "keywords": ["<2-4 specific terms or values from the claim that would appear in a source document>"]}}
 
-Aim for 5-15 claims. Output ONLY valid JSON.[/INST]"""
+Aim for 5-15 claims. Output ONLY valid JSON."""
 
 
-CLAIM_DRIVEN_CHAPTER_PROMPT = """[INST]Write a textbook chapter about "{chapter_title}" for a {topic} guide. Be a teacher — explain, synthesize, draw connections. The reader needs to walk away understanding the subject, not just reading bullet points.
+CLAIM_DRIVEN_CHAPTER_PROMPT = """Write a textbook chapter about "{chapter_title}" for a {topic} guide. Be a teacher — explain, synthesize, draw connections. The reader needs to walk away understanding the subject, not just reading bullet points.
 
 TWO RULES OPERATING TOGETHER — anchor for prose, railroad for specifics:
 
@@ -279,10 +263,10 @@ CONTENT RULES:
 - Do NOT include any brand names, manufacturer names, or model numbers.
 - Do NOT wrap output in code fences.
 
-OUTPUT: ONLY the markdown chapter content. No preamble like "Here's the chapter:", no commentary.[/INST]"""
+OUTPUT: ONLY the markdown chapter content. No preamble like "Here's the chapter:", no commentary."""
 
 
-PEDAGOGY_ENRICH_PROMPT = """[INST]You are adding pedagogical scaffolding to a textbook chapter that is factually accurate but reads like a reference document. Do NOT add new facts, claims, or specifics that are not already in the chapter.
+PEDAGOGY_ENRICH_PROMPT = """You are adding pedagogical scaffolding to a textbook chapter that is factually accurate but reads like a reference document. Do NOT add new facts, claims, or specifics that are not already in the chapter.
 
 CHAPTER TITLE: {chapter_title}
 TOPIC: {topic}
@@ -330,10 +314,10 @@ RULES:
 - Do NOT wrap output in code fences. Output plain markdown.
 - If the chapter is purely descriptive (history, theory) without procedures, you may skip the rationale step but ALWAYS add Try This and Review Questions.
 
-Output ONLY the enriched chapter markdown.[/INST]"""
+Output ONLY the enriched chapter markdown."""
 
 
-REGROUND_CHAPTER_PROMPT = """[INST]Rewrite the following textbook chapter about "{chapter_title}". The previous draft contained the specific unsupported claims listed below — these must be removed or rewritten in general terms.
+REGROUND_CHAPTER_PROMPT = """Rewrite the following textbook chapter about "{chapter_title}". The previous draft contained the specific unsupported claims listed below — these must be removed or rewritten in general terms.
 
 TOPIC: {topic}
 
@@ -356,10 +340,10 @@ REWRITE RULES:
 7. Do NOT wrap output in code fences. Output plain markdown prose only.
 8. Aim for 800-1200 words. Accuracy AND completeness — a chapter of 500 words that just names tools is not acceptable. Include at least one concrete worked example or step-by-step procedure drawn from the sources.
 
-Output ONLY the rewritten chapter markdown. No preamble, no explanation.[/INST]"""
+Output ONLY the rewritten chapter markdown. No preamble, no explanation."""
 
 
-EDIT_PASS_PROMPT = """[INST]You are a technical editor reviewing a chapter of a {topic} textbook.
+EDIT_PASS_PROMPT = """You are a technical copy editor for a chapter of a {topic} textbook. You polish PROSE only — you do NOT verify or correct facts.
 
 CHAPTER TITLE: {chapter_title}
 
@@ -369,30 +353,34 @@ CHAPTER DRAFT:
 KNOWN ISSUES TO FIX:
 {issues}
 
-Your task — edit the chapter in place. Specifically:
-1. Correct any technical inaccuracies you can identify.
-2. Replace vague or padded sentences with specific, concrete information.
-3. Ensure all procedures are numbered and include specific values (temperatures, amps, distances, times) where appropriate.
-4. Remove any repeated content or redundant sentences.
-5. Improve readability: short paragraphs, active voice, clear topic sentences.
-6. Do NOT add new topics not already present in the draft — stay in scope.
-7. Remove ALL brand names, manufacturer names, and model numbers — replace with generic equipment names.
-8. Do NOT wrap output in code fences or markdown blocks. Output plain markdown prose only.
+SCOPE — what you MAY do:
+1. Remove repeated content, redundant sentences, and padding.
+2. Improve readability: short paragraphs, active voice, clear topic sentences.
+3. Tighten vague phrasing — but only by rewording existing claims, never by adding new specifics the draft does not contain.
+4. Fix grammar, punctuation, and inconsistent terminology (use the same term for the same concept throughout).
+5. Address the KNOWN ISSUES above when they are scope-appropriate (e.g. structure, repetition, clarity).
+6. Remove ALL brand names, manufacturer names, and model numbers — replace with generic equipment names.
 
-Output ONLY the improved chapter markdown, starting after the chapter title. No preamble, no code fences.[/INST]"""
+STRICT PROHIBITIONS — what you MUST NOT do:
+- Do NOT change, "correct", or add any number, temperature, time, pressure, percentage, year, standard ID, named procedure, or tool spec. If you suspect a value is wrong, leave it and append an inline HTML comment: `<!-- REVIEW: value may be off -->`. The fact-checker handles verification; you do not.
+- Do NOT introduce facts, examples, or techniques not already in the draft.
+- Do NOT add new sections or topics.
+- Do NOT wrap output in code fences. Output plain markdown only.
+
+Output ONLY the edited chapter markdown, starting after the chapter title. No preamble."""
 
 
-TOOL_EXTRACT_PROMPT = """[INST]Read the following text and extract every distinct hand tool, power tool, or measuring/layout tool mentioned.
+TOOL_EXTRACT_PROMPT = """Read the following text and extract every distinct hand tool, power tool, or measuring/layout tool mentioned.
 
 TEXT:
 {text}
 
 Return ONLY a JSON array of tool name strings. Use the most common generic name for each tool (e.g. "claw hammer", "marking gauge", "block plane"). No brands. No materials. No consumables. If no tools are mentioned, return [].
 
-Output ONLY valid JSON.[/INST]"""
+Output ONLY valid JSON."""
 
 
-TOOL_ENTRY_PROMPT = """[INST]Write a concise reference entry for the following tool: "{tool_name}"
+TOOL_ENTRY_PROMPT = """Write a concise reference entry for the following tool: "{tool_name}"
 
 Source passages for context:
 {passages}
@@ -409,10 +397,10 @@ Write the entry in this exact format — no extra sections, no brand names, no m
 
 **Care:** 2-3 sentences on keeping it functional — cleaning, storage, sharpening or adjustment if applicable.
 
-Output ONLY the entry text, starting with "**What it is:**". No title, no headers above it.[/INST]"""
+Output ONLY the entry text, starting with "**What it is:**". No title, no headers above it."""
 
 
-VIDEO_QUERIES_PROMPT = """[INST]Generate YouTube search queries for learning "{topic}" at three skill levels.
+VIDEO_QUERIES_PROMPT = """Generate YouTube search queries for learning "{topic}" at three skill levels.
 
 Based on these skill areas: {skill_areas}
 
@@ -430,5 +418,5 @@ Output a JSON object:
   "advanced": ["<query 1>", "<query 2>", "<query 3>", "<query 4>"]
 }}
 
-Output ONLY valid JSON.[/INST]"""
+Output ONLY valid JSON."""
 
